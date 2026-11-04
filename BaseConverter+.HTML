@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta http-equiv="Cache-Control"
+          content="no-store, no-cache, must-revalidate">
+
+    <meta http-equiv="Pragma"
+          content="no-cache">
+
+    <meta http-equiv="Expires"
+          content="0">
+
+    <meta name="referrer"
+          content="no-referrer">
+
+
+    <title>BaseXX Converter</title>
+
+
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            padding: 15px;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            text-align: center;
+            color: #00ff99;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        label {
+            display: block;
+            margin: 15px 0 5px;
+            font-weight: bold;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100px;
+            box-sizing: border-box;
+            background-color: #1e1e1e;
+            color: #fff;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 16px;
+            resize: vertical;
+        }
+        
+         textarea:focus {
+            outline: none;
+            border-color: #888;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-group-center {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        
+
+        .btn-encode {
+            background-color: #00ff99;
+            color: #000;
+        }
+
+        .btn-decode {
+            background-color: #00bfff;
+            color: #000;
+        }
+
+        .btn-share {
+            background-color: #ffcc00;
+            color: #000;
+        }
+
+        .btn-copy {
+            background-color: #444;
+            color: #fff;
+        }
+
+        .btn-clear {
+            background-color: #ff3366;
+            color: #fff;
+        }
+
+        .btn-paste {
+            background-color: #9b59b6;
+            color: #fff;
+        }
+
+        button:active {
+            opacity: 0.8;
+        }
+        
+        button:active {
+            opacity: 0.8;
+        }
+
+        @keyframes pop-text {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+            100% { transform: scale(1); }
+        }
+
+        .title-pop {
+            animation: pop-text 0.3s ease-in-out;
+        }
+        
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 id="converterTitle">Base58</h2>
+
+    <label id="inputLabel" for="input">Input (Text or Encoded Data):</label>
+    <textarea
+        id="input"
+        placeholder="Enter text or encoded data..."
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"></textarea>
+
+    <div class="btn-group">
+        <button id="pasteBtn" class="btn-paste">Paste</button>
+        <button id="clearInputBtn" class="btn-clear">Clear</button>
+    </div>
+
+    <div class="btn-group">
+        <button id="encodeBtn" class="btn-encode">Encode (Enter)</button>
+        <button id="decodeBtn" class="btn-decode">Decode</button>
+    </div>
+
+    <label for="output">Result:</label>
+    <textarea
+        id="output"
+        readonly
+        placeholder="Result..."
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"></textarea>
+
+    <div class="btn-group-center">
+        <button id="copyBtn" class="btn-copy">Copy</button>
+        <button id="shareBtn" class="btn-share">Share</button>
+    </div>
+</div>
+
+<script>
+const input = document.getElementById("input");
+const output = document.getElementById("output");
+const converterTitle = document.getElementById("converterTitle");
+
+// Cycle selection and caret placement for the editable input
+function selectInputOnClick(element) {
+    let selectNext = true;
+
+    element.addEventListener("focus", () => {
+        element.select();
+        selectNext = false;
+    });
+
+    element.addEventListener("click", () => {
+        if (selectNext) {
+            element.select();
+            selectNext = false;
+        } else {
+            selectNext = true;
+        }
+    });
+}
+
+
+function selectOnFocus(element) {
+    element.addEventListener("focus", () => element.select());
+    element.addEventListener("click", () => element.select());
+}
+
+selectInputOnClick(input);
+selectOnFocus(output);
+
+// Allow drop
+input.addEventListener("dragover", (e) => {
+    e.preventDefault();
+});
+
+// [Unified Paste & Drop logic]
+const handleDrop = (e, el) => {
+    e.preventDefault();
+    const text = e.dataTransfer.getData('text/plain');
+    if (text !== null) {
+        el.value = text;
+        el.focus();
+        el.setSelectionRange(0, 0);
+    }
+};
+
+const handlePaste = (e, el) => {
+    requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(0, 0);
+    });
+};
+
+input.addEventListener("drop", (e) => handleDrop(e, input));
+input.addEventListener("paste", (e) => handlePaste(e, input));
+
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder("utf-8", { fatal: true });
+
+let currentAlgIndex = 0;
+
+// BaseN factory with validation ===========================================
+// for general reference https://gchq.github.io/CyberChef
+
+function createBaseN(alphabet) {
+    // Validate alphabet uniqueness to prevent ambiguous decoding
+    if (new Set(alphabet).size !== alphabet.length) {
+        throw new Error("BaseN: Alphabet contains duplicate characters.");
+    }
+
+    const base = BigInt(alphabet.length);
+    const decodeTable = Object.create(null); // Clean dictionary without prototype
+
+    for (let i = 0; i < alphabet.length; i++) {
+        decodeTable[alphabet[i]] = i;
+    }
+
+    return {
+        encode(str) {
+            const bytes = textEncoder.encode(str);
+
+            let leadingZeros = 0;
+
+            while (
+                leadingZeros < bytes.length &&
+                bytes[leadingZeros] === 0
+            ) {
+                leadingZeros++;
+            }
+
+            let value = 0n;
+
+            for (let i = leadingZeros; i < bytes.length; i++) {
+                value =
+                    (value << 8n) |
+                    BigInt(bytes[i]);
+            }
+
+            let result = "";
+
+            while (value > 0n) {
+                result =
+                    alphabet[
+                        Number(value % base)
+                    ] + result;
+
+                value /= base;
+            }
+
+            return (
+                alphabet[0].repeat(leadingZeros) +
+                result
+            );
+        },
+
+        decode(str) {
+            let leadingZeros = 0;
+
+            while (
+                leadingZeros < str.length &&
+                str[leadingZeros] === alphabet[0]
+            ) {
+                leadingZeros++;
+            }
+
+            let value = 0n;
+
+            for (let i = leadingZeros; i < str.length; i++) {
+                const index =
+                    decodeTable[str[i]];
+
+                if (index === undefined) {
+                    return ""; // Return empty string on invalid character
+                }
+
+                value =
+                    value * base +
+                    BigInt(index);
+            }
+
+            const bytes = [];
+
+            while (value > 0n) {
+                bytes.unshift(
+                    Number(value & 255n)
+                );
+
+                value >>= 8n;
+            }
+
+            for (let i = 0; i < leadingZeros; i++) {
+                bytes.unshift(0);
+            }
+
+            try {
+                return textDecoder.decode(
+                    new Uint8Array(bytes)
+                );
+            } catch (err) {
+                return ""; // Invalid UTF-8 sequence
+            }
+        }
+    };
+}
+// END BaseN factory implementation ==========================================================
+
+// Optimized Adobe ASCII85 implementation (matches CyberChef logic) ==========================================================
+const Base85a = {
+    encode(str) {
+        const data = textEncoder.encode(str);
+        let result = "";
+
+        for (let i = 0; i < data.length; i += 4) {
+            const chunk = data.slice(i, i + 4);
+
+            const padded = new Uint8Array(4);
+            padded.set(chunk);
+
+            const num =
+                ((padded[0] << 24) |
+                 (padded[1] << 16) |
+                 (padded[2] << 8) |
+                 padded[3]) >>> 0;
+
+            if (chunk.length === 4 && num === 0) {
+                result += "z";
+                continue;
+            }
+
+            const chars = [];
+            let temp = num;
+
+            for (let j = 0; j < 5; j++) {
+                chars.push(
+                    String.fromCharCode(
+                        (temp % 85) + 33
+                    )
+                );
+                temp = Math.floor(temp / 85);
+            }
+
+            chars.reverse();
+
+            if (chunk.length < 4) {
+                chars.splice(chunk.length + 1);
+            }
+
+            result += chars.join("");
+        }
+
+        return result;
+    },
+
+    decode(str) {
+        str = str.replace(/\s/g, "");
+
+        // Validate characters: ASCII 33-117 or 'z'
+        for (let i = 0; i < str.length; i++) {
+            const code = str.charCodeAt(i);
+
+            if (
+                !((code >= 33 && code <= 117) || str[i] === "z")
+            ) {
+                return "";
+            }
+        }
+
+        const bytes = [];
+        let i = 0;
+
+        while (i < str.length) {
+            // Handle standalone 'z' token (represents 4 zero bytes)
+            if (str[i] === "z") {
+                bytes.push(0, 0, 0, 0);
+                i++;
+                continue;
+            }
+
+            // Collect up to 5 characters for current group
+            const chunkLen = Math.min(5, str.length - i);
+            const digits = [];
+
+            // Reject single-character groups (invalid in ASCII85)
+            if (chunkLen === 1) {
+                return "";
+            }
+
+            // Build digits array and check for 'z' within group
+            for (let j = 0; j < 5; j++) {
+                if (j < chunkLen) {
+                    // Check for 'z' inside incomplete group
+                    if (str[i + j] === "z") {
+                        return "";
+                    }
+                    digits.push(str.charCodeAt(i + j) - 33);
+                } else {
+                    // Pad with value 84 (character 'u')
+                    digits.push(84);
+                }
+            }
+
+            const block =
+                digits[0] * 52200625 +
+                digits[1] * 614125 +
+                digits[2] * 7225 +
+                digits[3] * 85 +
+                digits[4];
+
+            // Check for 32-bit overflow
+            if (block > 0xFFFFFFFF) {
+                return "";
+            }
+
+            const bytesOut = [
+                (block >>> 24) & 0xFF,
+                (block >>> 16) & 0xFF,
+                (block >>> 8) & 0xFF,
+                block & 0xFF
+            ];
+
+            if (chunkLen < 5) {
+                bytes.push(...bytesOut.slice(0, chunkLen - 1));
+            } else {
+                bytes.push(...bytesOut);
+            }
+
+            i += 5;
+        }
+
+        try {
+            return textDecoder.decode(
+                new Uint8Array(bytes)
+            );
+        } catch (err) {
+            return ""; // Invalid UTF-8 sequence
+        }
+    }
+};
+
+// END ASCII85 implementation ==========================================================
+
+// Optimized Base64 implementation (matches CyberChef logic) ==========================================================
+const Base64 = {
+    encode(str) {
+        const bytes = textEncoder.encode(str);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+    },
+
+    decode(str) {
+        try {
+            const binary = atob(str);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return textDecoder.decode(bytes);
+        } catch (err) {
+            return ""; // Invalid Base64 or UTF-8 sequence
+        }
+    }
+};
+// END Base64 implementation ==========================================================
+
+
+// ------------------------------------------------------------------
+const ALGORITHMS = [
+    {
+        name: "Base58",
+        handler: createBaseN("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+    },
+    {
+        name: "Base62",
+        handler: createBaseN("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+    },
+    {
+        name: "Base64",
+        handler: Base64
+    },
+    {
+        name: "Base85A",
+        handler: Base85a
+    }
+];
+
+function switchAlgorithm() {
+    // Ignore clicks while animation is running
+    if (converterTitle.classList.contains("title-pop")) {
+        return;
+    }
+
+    // Update index and text instantly before animation starts
+    currentAlgIndex =
+        (currentAlgIndex + 1) %
+        ALGORITHMS.length;
+
+    const alg =
+        ALGORITHMS[currentAlgIndex];
+
+    converterTitle.textContent =
+        alg.name;
+
+    output.value = "";
+
+    // Trigger pop animation on the new text
+    converterTitle.classList.add("title-pop");
+
+    // Remove class after animation ends to allow re-triggering
+    converterTitle.addEventListener(
+        "animationend",
+        () => {
+            converterTitle.classList.remove("title-pop");
+        },
+        { once: true }
+    );
+}
+
+converterTitle.addEventListener(
+    "click",
+    switchAlgorithm
+);
+
+function encode() {
+    const alg =
+        ALGORITHMS[currentAlgIndex];
+
+    try {
+        output.value =
+            alg.handler.encode(input.value);
+            output.focus();
+    } catch (err) {
+        output.value =
+            "Error: " + err.message;
+    }
+}
+
+function decode() {
+    const alg =
+        ALGORITHMS[currentAlgIndex];
+
+    try {
+        output.value =
+            alg.handler.decode(input.value);
+    } catch (err) {
+        output.value =
+            "Error: " + err.message;
+    }
+}
+
+document.getElementById("encodeBtn").addEventListener(
+    "click",
+    encode
+);
+
+document.getElementById("decodeBtn").addEventListener(
+    "click",
+    decode
+);
+
+document.getElementById("copyBtn").addEventListener(
+    "click",
+    async () => {
+        if (!output.value) {
+            return;
+        }
+
+        // Try modern Clipboard API first (requires HTTPS)
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(output.value);
+                return;
+            }
+        } catch (err) {
+            console.error("Clipboard API copy failed:", err);
+        }
+
+        // Fallback for Android WebView and non-secure contexts
+        try {
+            output.focus();
+            output.select();
+            document.execCommand("copy");
+        } catch (err) {
+            console.error("execCommand copy failed:", err);
+        }
+
+        output.setSelectionRange(0, 0);
+    }
+);
+
+// Share button handler with fallback for non-secure contexts (file://, local LAN)
+document.getElementById("shareBtn").addEventListener(
+    "click",
+    async () => {
+        if (!output.value) {
+            return;
+        }
+
+        // Try native Web Share API first (HTTPS + supported browser)
+        if (navigator.canShare && navigator.canShare({ text: output.value })) {
+            try {
+                await navigator.share({
+                    title: "Encoded Data",
+                    text: output.value
+                });
+                return;
+            } catch (err) {
+                // User cancelled or share failed — fall through to fallback
+                if (err.name !== "AbortError") {
+                    console.error("Share failed:", err);
+                }
+            }
+        }
+
+        // Fallback: copy to clipboard via legacy execCommand and notify user
+        try {
+            output.focus();
+            output.select();
+            document.execCommand("copy");
+            alert("Text copied to clipboard. You can paste it into any app.");
+        } catch (err) {
+            console.error("Fallback share copy failed:", err);
+            alert("Sharing is not supported in this environment.");
+        }
+
+        output.setSelectionRange(0, 0);
+    }
+);
+
+document.getElementById("pasteBtn").addEventListener(
+    "click",
+    async () => {
+        try {
+            const text = await navigator.clipboard.readText();
+            input.value = text;
+            input.focus();
+            input.setSelectionRange(0, 0);
+        } catch (err) {
+            console.error("Paste failed:", err);
+        }
+    }
+);
+
+document.getElementById("clearInputBtn").addEventListener(
+    "click",
+    () => {
+        input.value = "";
+        output.value = "";
+    }
+);
+
+input.addEventListener(
+    "keydown",
+    (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            encode();
+        }
+    }
+);
+</script>
+
+</body>
+</html>
